@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <string>
 
+#include <people_msgs_utils/utils.h>
+
 using costmap_2d::NO_INFORMATION;
 using costmap_2d::LETHAL_OBSTACLE;
 using costmap_2d::FREE_SPACE;
@@ -25,7 +27,9 @@ void SocialLayer::onInitialize()
 void SocialLayer::peopleCallback(const people_msgs::People& people)
 {
   boost::recursive_mutex::scoped_lock lock(lock_);
-  people_list_ = people;
+  people_frame_ = people.header.frame_id;
+  // convert to custom type
+  std::tie(people_, std::ignore) = people_msgs_utils::createFromPeople(people.people);
 }
 
 
@@ -35,45 +39,18 @@ void SocialLayer::updateBounds(double origin_x, double origin_y, double origin_z
   boost::recursive_mutex::scoped_lock lock(lock_);
 
   // prepare list of people to compute costs for
-  std::string global_frame = layered_costmap_->getGlobalFrameID();
   transformed_people_.clear();
-
-  for (unsigned int i = 0; i < people_list_.people.size(); i++)
+  // non time-optimal, but safe in terms of `people_frame_` being empty etc.
+  for (const auto& person: people_)
   {
-    people_msgs::Person& person = people_list_.people[i];
-    // person geometry data transformed into the costmap frame
-    people_msgs::Person tpt;
-    geometry_msgs::PointStamped pt, opt;
-
+    // transform people poses and velocities to costmap frame
     try
     {
-      // save person position, stamp and frame
-      pt.point.x = person.position.x;
-      pt.point.y = person.position.y;
-      pt.point.z = person.position.z;
-      pt.header.frame_id = people_list_.header.frame_id;
-      pt.header.stamp = people_list_.header.stamp;
-      // transform person position to the costmap frame (if needed)
-      tf_->transform(pt, opt, global_frame);
-
-      // copy transformed position of a person
-      tpt.position.x = opt.point.x;
-      tpt.position.y = opt.point.y;
-      tpt.position.z = opt.point.z;
-
-      // next position of the person in the frame related to the people
-      pt.point.x += person.velocity.x;
-      pt.point.y += person.velocity.y;
-      pt.point.z += person.velocity.z;
-      // transform next position of the person to the costmap frame
-      tf_->transform(pt, opt, global_frame);
-
-      // compute velocity of the person expressed in the costmap frame
-      tpt.velocity.x = opt.point.x - tpt.position.x;
-      tpt.velocity.y = opt.point.y - tpt.position.y;
-      tpt.velocity.z = opt.point.z - tpt.position.z;
-
-      transformed_people_.push_back(tpt);
+      auto transform = tf_->lookupTransform(layered_costmap_->getGlobalFrameID(), people_frame_, ros::Time(0));
+      // copy for transform
+      auto person_copy = person;
+      person_copy.transform(transform);
+      transformed_people_.push_back(person_copy);
     }
     catch (tf2::LookupException& ex)
     {

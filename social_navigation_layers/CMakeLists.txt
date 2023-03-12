@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   people_msgs
   pluginlib
   roscpp
+  people_msgs_utils
 )
 
 generate_dynamic_reconfigure_options(
@@ -17,13 +18,13 @@ generate_dynamic_reconfigure_options(
 )
 
 catkin_package(
-    CATKIN_DEPENDS angles costmap_2d dynamic_reconfigure geometry_msgs people_msgs pluginlib roscpp
+    CATKIN_DEPENDS angles costmap_2d dynamic_reconfigure geometry_msgs people_msgs pluginlib roscpp people_msgs_utils
     INCLUDE_DIRS include
     LIBRARIES social_layers
 )
 
 include_directories(
-  include ${catkin_INCLUDE_DIRS}
+  include ${catkin_INCLUDE_DIRS} ${people_msgs_utils_INCLUDE_DIRS}
 )
 
 ## add cpp library
@@ -34,7 +35,7 @@ add_library(social_layers
 )
 add_dependencies(social_layers ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(
-    social_layers ${catkin_LIBRARIES}
+    social_layers ${catkin_LIBRARIES} ${people_msgs_utils_LIBRARIES}
 )
 
 if(CATKIN_ENABLE_TESTING)

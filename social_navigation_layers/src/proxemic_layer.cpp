@@ -43,24 +43,20 @@ void ProxemicLayer::onInitialize()
 void ProxemicLayer::updateBoundsFromPeople(double* min_x, double* min_y, double* max_x, double* max_y)
 {
   // this method finds which part of the costmap will be modified
-  std::list<people_msgs::Person>::iterator p_it;
-
-  for (p_it = transformed_people_.begin(); p_it != transformed_people_.end(); ++p_it)
+  for (const auto& person: transformed_people_)
   {
-    people_msgs::Person person = *p_it;
-
     // velocity vector magnitude
-    double mag = sqrt(pow(person.velocity.x, 2) + pow(person.velocity.y, 2));
+    double mag = std::hypot(person.getVelocityX(), person.getVelocityY());
     // possibly strengthen impact of velocity with `factor_` (factor is at least 1.0)
     double factor = 1.0 + mag * factor_;
     // distance from the mean of the `Gaussian` (person center) that has `cutoff` cost assigned
     double point = get_radius(cutoff_, amplitude_, covar_ * factor);
 
     // find cost bounds, modelled by a circle
-    *min_x = std::min(*min_x, person.position.x - point);
-    *min_y = std::min(*min_y, person.position.y - point);
-    *max_x = std::max(*max_x, person.position.x + point);
-    *max_y = std::max(*max_y, person.position.y + point);
+    *min_x = std::min(*min_x, person.getPositionX() - point);
+    *min_y = std::min(*min_y, person.getPositionY() - point);
+    *max_x = std::max(*max_x, person.getPositionX() + point);
+    *max_y = std::max(*max_y, person.getPositionY() + point);
   }
 }
 
@@ -69,24 +65,21 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
   boost::recursive_mutex::scoped_lock lock(lock_);
   if (!enabled_) return;
 
-  if (people_list_.people.size() == 0)
+  if (people_.empty())
     return;
   if (cutoff_ >= amplitude_)
     return;
 
-  std::list<people_msgs::Person>::iterator p_it;
   costmap_2d::Costmap2D* costmap = layered_costmap_->getCostmap();
   double res = costmap->getResolution();
 
   // iterate over all people data
-  for (p_it = transformed_people_.begin(); p_it != transformed_people_.end(); ++p_it)
+  for (const auto& person: transformed_people_)
   {
-    // current person
-    people_msgs::Person person = *p_it;
     // yaw angle estimate of the person (will be quite `off` once person is standing)
-    double angle = atan2(person.velocity.y, person.velocity.x);
+    double angle = person.getOrientationYaw();
     // overall speed of the person
-    double mag = sqrt(pow(person.velocity.x, 2) + pow(person.velocity.y, 2));
+    double mag = std::hypot(person.getVelocityX(), person.getVelocityY());
     // possibly strengthen impact of velocity with `factor_` (factor is at least 1.0)
     double factor = 1.0 + mag * factor_;
     // radius of the proxemics zone if person is stationary
@@ -99,11 +92,12 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
      * Width and height values are prepared here for the worst case scenario, when either
      * width or height can have length of at most (base+point) and at least of 1 px
      */
-    unsigned int width = std::max(1, static_cast<int>((base + point) / res)),
-                 height = std::max(1, static_cast<int>((base + point) / res));
+    unsigned int width = std::max(1, static_cast<int>((base + point) / res));
+    unsigned int height = std::max(1, static_cast<int>((base + point) / res));
 
     // person center coordinates
-    double cx = person.position.x, cy = person.position.y;
+    double cx = person.getPositionX();
+    double cy = person.getPositionY();
 
     /*
      * Compute the world coordinates of the right-down vertex (y_min, x_min) of the Gaussian.
@@ -171,7 +165,7 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
         // map coordinates we're calculating for
         double x = bx + i * res, y = by + j * res;
         // direction of the vector pointing to the center of the person
-        double ma = atan2(y - cy, x - cx);
+        double ma = std::atan2(y - cy, x - cx);
         // difference between the `map angle` and the person's yaw
         double diff = angles::shortest_angular_distance(angle, ma);
         // amplitude of the Gaussian function

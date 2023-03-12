@@ -22,46 +22,28 @@ public:
   {
     boost::recursive_mutex::scoped_lock lock(lock_);
 
-    std::string global_frame = layered_costmap_->getGlobalFrameID();
+    // prepare list of people to compute costs for
     transformed_people_.clear();
-
-    for (unsigned int i = 0; i < people_list_.people.size(); i++)
+    // non time-optimal, but safe in terms of `people_frame_` being empty etc.
+    for (const auto& person: people_)
     {
-      people_msgs::Person& person = people_list_.people[i];
-      people_msgs::Person tpt;
-      geometry_msgs::PointStamped pt, opt;
-
+      // transform people poses and velocities to costmap frame
       try
       {
-        pt.point.x = person.position.x;
-        pt.point.y = person.position.y;
-        pt.point.z = person.position.z;
-        pt.header.frame_id = people_list_.header.frame_id;
-        pt.header.stamp = people_list_.header.stamp;
-        tf_->transform(pt, opt, global_frame);
-        tpt.position.x = opt.point.x;
-        tpt.position.y = opt.point.y;
-        tpt.position.z = opt.point.z;
+        auto transform = tf_->lookupTransform(layered_costmap_->getGlobalFrameID(), people_frame_, ros::Time(0));
+        // copy for transform
+        auto person_copy = person;
+        person_copy.transform(transform);
+        transformed_people_.push_back(person_copy);
 
-        pt.point.x += person.velocity.x;
-        pt.point.y += person.velocity.y;
-        pt.point.z += person.velocity.z;
-        tf_->transform(pt, opt, global_frame);
-
-        tpt.velocity.x = tpt.position.x - opt.point.x;
-        tpt.velocity.y = tpt.position.y - opt.point.y;
-        tpt.velocity.z = tpt.position.z - opt.point.z;
-
-        transformed_people_.push_back(tpt);
-
-        double mag = sqrt(pow(tpt.velocity.x, 2) + pow(person.velocity.y, 2));
+        double mag = std::hypot(person_copy.getVelocityX(), person_copy.getVelocityY());
         double factor = 1.0 + mag * factor_;
         double point = get_radius(cutoff_, amplitude_, covar_ * factor);
 
-        *min_x = std::min(*min_x, tpt.position.x - point);
-        *min_y = std::min(*min_y, tpt.position.y - point);
-        *max_x = std::max(*max_x, tpt.position.x + point);
-        *max_y = std::max(*max_y, tpt.position.y + point);
+        *min_x = std::min(*min_x, person_copy.getPositionX() - point);
+        *min_y = std::min(*min_y, person_copy.getPositionY() - point);
+        *max_x = std::max(*max_x, person_copy.getPositionX() + point);
+        *max_y = std::max(*max_y, person_copy.getPositionY() + point);
       }
       catch (tf2::LookupException& ex)
       {
@@ -86,7 +68,7 @@ public:
     boost::recursive_mutex::scoped_lock lock(lock_);
     if (!enabled_) return;
 
-    if (people_list_.people.size() == 0)
+    if (people_.empty())
       return;
     if (cutoff_ >= amplitude_)
       return;
@@ -95,19 +77,19 @@ public:
     costmap_2d::Costmap2D* costmap = layered_costmap_->getCostmap();
     double res = costmap->getResolution();
 
-    for (p_it = transformed_people_.begin(); p_it != transformed_people_.end(); ++p_it)
+    for (const auto& person: transformed_people_)
     {
-      people_msgs::Person person = *p_it;
-      double angle = atan2(person.velocity.y, person.velocity.x) + 1.51;
-      double mag = sqrt(pow(person.velocity.x, 2) + pow(person.velocity.y, 2));
+      double angle = person.getOrientationYaw() + 1.51;
+      double mag = std::hypot(person.getVelocityX(), person.getVelocityY());
       double factor = 1.0 + mag * factor_;
       double base = get_radius(cutoff_, amplitude_, covar_);
       double point = get_radius(cutoff_, amplitude_, covar_ * factor);
 
-      unsigned int width = std::max(1, static_cast<int>((base + point) / res)),
-                   height = std::max(1, static_cast<int>((base + point) / res));
+      unsigned int width = std::max(1, static_cast<int>((base + point) / res));
+      unsigned int height = std::max(1, static_cast<int>((base + point) / res));
 
-      double cx = person.position.x, cy = person.position.y;
+      double cx = person.getPositionX();
+      double cy = person.getPositionY();
 
       double ox, oy;
       if (sin(angle) > 0)

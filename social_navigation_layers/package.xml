@@ -18,6 +18,7 @@
   <depend>people_msgs</depend>
   <depend>pluginlib</depend>
   <depend>roscpp</depend>
+  <depend>people_msgs_utils</depend>
   <test_depend>roslint</test_depend>
 
   <export>
