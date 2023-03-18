@@ -47,10 +47,9 @@ void ProxemicLayer::updateBoundsFromPeople(double* min_x, double* min_y, double*
   {
     // velocity vector magnitude
     double mag = std::hypot(person.getVelocityX(), person.getVelocityY());
-    // possibly strengthen impact of velocity with `factor_` (factor is at least 1.0)
-    double factor = 1.0 + mag * factor_;
-    // distance from the mean of the `Gaussian` (person center) that has `cutoff` cost assigned
-    double point = get_radius(cutoff_, amplitude_, covar_ * factor);
+    // distance from the mean of the `Gaussian` (person center) that has a `cutoff` cost assigned
+    // (including the velocity factor)
+    double point = computeAdjustmentsRadius(mag).second;
 
     // find cost bounds, modelled by a circle
     *min_x = std::min(*min_x, person.getPositionX() - point);
@@ -80,12 +79,16 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
     double angle = person.getOrientationYaw();
     // overall speed of the person
     double mag = std::hypot(person.getVelocityX(), person.getVelocityY());
-    // possibly strengthen impact of velocity with `factor_` (factor is at least 1.0)
-    double factor = 1.0 + mag * factor_;
-    // radius of the proxemics zone if person is stationary
-    double base = get_radius(cutoff_, amplitude_, covar_);
-    // radius of the proxemics zone if person is moving (including the velocity factor)
-    double point = get_radius(cutoff_, amplitude_, covar_ * factor);
+    // personal space Gaussian's variances
+    double var_heading = computeVarianceHeading(mag);
+    double var_side = computeVarianceSide(mag);
+    double var_rear = computeVarianceRear(mag);
+    // spread of the personal space
+    // prev 'base': radius of the personal space of a stationary person
+    double base;
+    // prev 'point': radius of the personal space of a moving person (including the velocity factor)
+    double point;
+    std::tie(base, point) = computeAdjustmentsRadius(mag);
 
     /*
      * Width and height (in costmap pixels) of the proxemics zone
@@ -173,9 +176,9 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
         // separate angle range that the Gaussian is calculated for as we're considering asymmetric Gaussian (prolonged
         // in the person's heading direction); the other part is not affected by the orientation
         if (fabs(diff) < M_PI / 2)
-          a = gaussian(x, y, cx, cy, amplitude_, covar_ * factor, covar_, angle);
+          a = gaussian(x, y, cx, cy, amplitude_, var_heading, var_side, angle);
         else
-          a = gaussian(x, y, cx, cy, amplitude_, covar_,       covar_, 0);
+          a = gaussian(x, y, cx, cy, amplitude_, var_rear, var_side, 0);
 
         if (a < cutoff_)
           continue;
@@ -187,12 +190,41 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
   }
 }
 
+double ProxemicLayer::computeVarianceHeading(double speed) const
+{
+  // according to Kirby's thesis, eqn. 4.5
+  return std::max(2 * speed, 0.5);
+}
+
+double ProxemicLayer::computeVarianceSide(double speed) const
+{
+  // according to Kirby's thesis, eqn. 4.6
+  return (2.0 / 3.0) * computeVarianceHeading(speed);
+}
+
+double ProxemicLayer::computeVarianceRear(double speed) const
+{
+  // according to Kirby's thesis, eqn. 4.7
+  return (1.0 / 2.0) * computeVarianceHeading(speed);
+}
+
+std::pair<double, double> ProxemicLayer::computeAdjustmentsRadius(double speed) const
+{
+  // variances of the personal space
+  double var_heading = computeVarianceHeading(speed);
+  double var_side = computeVarianceSide(speed);
+  double var_rear = computeVarianceRear(speed);
+  // radius of the proxemics zone if person is stationary
+  double base = get_radius(cutoff_, amplitude_, std::max(var_side, var_rear));
+  // radius of the proxemics zone if person is moving (including the velocity factor)
+  double point = get_radius(cutoff_, amplitude_, var_heading);
+  return std::make_pair(base, point);
+}
+
 void ProxemicLayer::configure(ProxemicLayerConfig &config, uint32_t level)
 {
   cutoff_ = config.cutoff;
   amplitude_ = config.amplitude;
-  covar_ = config.covariance;
-  factor_ = config.factor;
   people_keep_time_ = ros::Duration(config.keep_time);
   enabled_ = config.enabled;
 }

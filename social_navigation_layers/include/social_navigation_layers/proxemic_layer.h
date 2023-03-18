@@ -6,6 +6,8 @@
 #include <dynamic_reconfigure/server.h>
 #include <social_navigation_layers/ProxemicLayerConfig.h>
 
+#include <utility>
+
 double gaussian(double x, double y, double x0, double y0, double A, double varx, double vary, double skew);
 double get_radius(double cutoff, double A, double var);
 
@@ -60,9 +62,14 @@ public:
    */
   virtual void updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j);
 
+  virtual double computeVarianceHeading(double speed) const;
+  virtual double computeVarianceSide(double speed) const;
+  virtual double computeVarianceRear(double speed) const;
+  virtual std::pair<double, double> computeAdjustmentsRadius(double speed) const;
+
 protected:
   void configure(ProxemicLayerConfig &config, uint32_t level);
-  double cutoff_, amplitude_, covar_, factor_;
+  double cutoff_, amplitude_;
   dynamic_reconfigure::Server<ProxemicLayerConfig>* server_;
   dynamic_reconfigure::Server<ProxemicLayerConfig>::CallbackType f_;
 };

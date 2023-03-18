@@ -36,9 +36,7 @@ public:
         person_copy.transform(transform);
         transformed_people_.push_back(person_copy);
 
-        double mag = std::hypot(person_copy.getVelocityX(), person_copy.getVelocityY());
-        double factor = 1.0 + mag * factor_;
-        double point = get_radius(cutoff_, amplitude_, covar_ * factor);
+        double point = computeAdjustmentsRadius().second;
 
         *min_x = std::min(*min_x, person_copy.getPositionX() - point);
         *min_y = std::min(*min_y, person_copy.getPositionY() - point);
@@ -80,10 +78,13 @@ public:
     for (const auto& person: transformed_people_)
     {
       double angle = person.getOrientationYaw() + 1.51;
-      double mag = std::hypot(person.getVelocityX(), person.getVelocityY());
-      double factor = 1.0 + mag * factor_;
-      double base = get_radius(cutoff_, amplitude_, covar_);
-      double point = get_radius(cutoff_, amplitude_, covar_ * factor);
+
+      // spread of the passing space
+      // prev 'base': radius of the passing space along heading direction
+      double base;
+      // prev 'point': radius of the passing space along 'side' direction
+      double point;
+      std::tie(base, point) = computeAdjustmentsRadius();
 
       unsigned int width = std::max(1, static_cast<int>((base + point) / res));
       unsigned int height = std::max(1, static_cast<int>((base + point) / res));
@@ -142,7 +143,7 @@ public:
           double diff = angles::shortest_angular_distance(angle, ma);
           double a;
           if (fabs(diff) < M_PI / 2)
-            a = gaussian(x, y, cx, cy, amplitude_, covar_ * factor, covar_, angle);
+            a = gaussian(x, y, cx, cy, amplitude_, computeVarianceHeading(), computeVarianceSide(), angle);
           else
             continue;
 
@@ -154,6 +155,33 @@ public:
       }
     }
   }
+
+  virtual double computeVarianceHeading(double speed = 0.0) const override
+  {
+    // according to Kirby's thesis, eqn. 4.9
+    return 2.0;
+  }
+
+  virtual double computeVarianceSide(double speed = 0.0) const override
+  {
+    // according to Kirby's thesis, eqn. 4.10
+    return 0.25;
+  }
+
+  virtual double computeVarianceRear(double speed = 0.0) const override
+  {
+    // according to Kirby's thesis, eqn. 4.11
+    return 0.01;
+  }
+
+  // radius does not change with speed
+  virtual std::pair<double, double> computeAdjustmentsRadius(double speed = 0.0) const override
+  {
+    double base = get_radius(cutoff_, amplitude_, computeVarianceSide());
+    double point = get_radius(cutoff_, amplitude_, computeVarianceHeading());
+    return std::make_pair(base, point);
+  }
+
 };
 };  // namespace social_navigation_layers
 
