@@ -180,6 +180,9 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
         else
           a = gaussian(x, y, cx, cy, amplitude_, var_rear, var_side, 0);
 
+        // count in the tracking accuracy
+        a *= person.getReliability();
+
         if (a < cutoff_)
           continue;
         unsigned char cvalue = (unsigned char) a;

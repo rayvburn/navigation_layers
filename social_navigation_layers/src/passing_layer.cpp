@@ -147,6 +147,9 @@ public:
           else
             continue;
 
+          // count in the tracking accuracy
+          a *= person.getReliability();
+
           if (a < cutoff_)
             continue;
           unsigned char cvalue = (unsigned char) a;
