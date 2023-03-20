@@ -68,11 +68,11 @@ public:
   }
 
 protected:
-  void peopleCallback(const people_msgs::People& people);
+  virtual void peopleCallback(const people_msgs::People& people);
   std::string people_frame_;
   ros::Subscriber people_sub_;
   people_msgs_utils::People people_;
-  std::list<people_msgs_utils::Person> transformed_people_;
+  people_msgs_utils::People transformed_people_;
   ros::Duration people_keep_time_;
   boost::recursive_mutex lock_;
   bool first_time_;
