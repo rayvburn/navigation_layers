@@ -39,10 +39,15 @@ target_link_libraries(
     social_layers ${catkin_LIBRARIES} ${people_msgs_utils_LIBRARIES}
 )
 
+# catkin run_tests --no-deps social_navigation_layers --verbose
 if(CATKIN_ENABLE_TESTING)
   find_package(catkin REQUIRED COMPONENTS roslint)
   roslint_cpp()
   roslint_add_test()
+  catkin_add_gtest(test_detections_storage test/test_detections_storage.cpp)
+  if(TARGET test_detections_storage)
+    target_link_libraries(test_detections_storage social_layers)
+  endif()
 endif()
 
 install(FILES costmap_plugins.xml
