@@ -68,7 +68,7 @@ public:
   virtual std::pair<double, double> computeAdjustmentsRadius(double speed) const;
 
 protected:
-  void configure(ProxemicLayerConfig &config, uint32_t level);
+  virtual void configure(ProxemicLayerConfig &config, uint32_t level);
   double cutoff_, amplitude_;
   dynamic_reconfigure::Server<ProxemicLayerConfig>* server_;
   dynamic_reconfigure::Server<ProxemicLayerConfig>::CallbackType f_;
