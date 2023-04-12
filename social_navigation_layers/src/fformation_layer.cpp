@@ -9,6 +9,7 @@
 #include <list>
 #include <string>
 
+#include <social_navigation_layers/detections_storage.h>
 #include <people_msgs_utils/utils.h>
 
 namespace social_navigation_layers
@@ -24,9 +25,8 @@ public:
                             double* max_x, double* max_y)
   {
     boost::recursive_mutex::scoped_lock lock(lock_);
-
-    // prepare set of groups to compute costs for
-    transformed_groups_.clear();
+    // prepare a set of groups to compute costs for; spatial attributes will be transformed to the costmap's frame
+    std::vector<people_msgs_utils::Group> transformed_groups;
     // lookupTransform in each step is not time-optimal, but safe in terms of `people_frame_` being empty etc.
     for (const auto& group: groups_)
     {
@@ -37,7 +37,7 @@ public:
         // copy for transform
         auto group_copy = group;
         group_copy.transform(transform);
-        transformed_groups_.push_back(group_copy);
+        transformed_groups.push_back(group_copy);
 
         double point = computeAdjustmentsRadius(
           computeVarianceFromSpan(group_copy.getSpanX()),
@@ -65,6 +65,15 @@ public:
         continue;
       }
     }
+    // update the storage
+    detections_.update(ros::Time::now().toSec(), transformed_groups, *min_x, *min_y, *max_x, *max_y);
+    // update bounds, following sections will not execute as new data are not available
+    if (detections_.usingPersistingBuffer()) {
+      *min_x = detections_.getArea().min_x;
+      *min_y = detections_.getArea().min_y;
+      *max_x = detections_.getArea().max_x;
+      *max_y = detections_.getArea().max_y;
+    }
   }
 
   virtual void updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j)
@@ -72,16 +81,16 @@ public:
     boost::recursive_mutex::scoped_lock lock(lock_);
     if (!enabled_) return;
 
-    if (groups_.empty())
+    if (detections_.getBuffer().empty())
       return;
+
     if (cutoff_ >= amplitude_)
       return;
 
-    std::list<people_msgs::Person>::iterator p_it;
     costmap_2d::Costmap2D* costmap = layered_costmap_->getCostmap();
     double res = costmap->getResolution();
 
-    for (const auto& group: transformed_groups_)
+    for (const auto& group: detections_.getBuffer())
     {
       double angle = group.getOrientationYaw();
 
@@ -148,13 +157,22 @@ public:
             continue;
 
           double x = bx + i * res, y = by + j * res;
-          double a = gaussian(x, y, cx, cy, amplitude_, var_x, var_y, angle);
+          // stores cost 'amplitude'
+          double a = 0.0;
 
-          // count in both the tracking accuracy and the relations strength
-          a *= group.getReliability() * group.getSocialRelationsStrength();
+          // whether to clear old detections or to operate normally (i.e. updating with a new data)
+          if (!detections_.bufferWillBeErased())
+          {
+            a = gaussian(x, y, cx, cy, amplitude_, var_x, var_y, angle);
+            // count in both the tracking accuracy and the relations strength
+            a *= group.getReliability() * group.getSocialRelationsStrength();
 
-          if (a < cutoff_)
-            continue;
+            // if amplitude is too small, do not update costs
+            if (a < cutoff_)
+            {
+              continue;
+            }
+          }
 
           unsigned char cvalue = (unsigned char) a;
           costmap->setCost(i + dx, j + dy, std::max(cvalue, old_cost));
@@ -188,8 +206,14 @@ public:
   }
 
 protected:
+  virtual void configure(ProxemicLayerConfig& config, uint32_t level) override
+  {
+    ProxemicLayer::configure(config, level);
+    detections_.setKeepTime(people_keep_time_.toSec());
+  }
+
   people_msgs_utils::Groups groups_;
-  std::vector<people_msgs_utils::Group> transformed_groups_;
+  DetectionsStorage<people_msgs_utils::Group> detections_;
 };
 }; // namespace social_navigation_layers
 
