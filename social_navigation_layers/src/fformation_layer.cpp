@@ -98,29 +98,22 @@ public:
       double var_x = computeVarianceFromSpan(group.getSpanX());
       double var_y = computeVarianceFromSpan(group.getSpanY());
       // spread of the O-space
-      // prev 'base': radius of the O-space along X direction
-      double base;
-      // prev 'point': radius of the O-space along Y direction
-      double point;
-      std::tie(base, point) = computeAdjustmentsRadius(var_x, var_y);
+      // radius of the O-space along 'longer' direction
+      double point = computeAdjustmentsRadius(var_x, var_y).second;
 
-      unsigned int width = std::max(1, static_cast<int>((base + point) / res));
-      unsigned int height = std::max(1, static_cast<int>((base + point) / res));
+      /*
+       * TODO: width and height can be optimized (previously base + point, but this doesn't cover required area
+       * when asymmetry is significant)
+       */
+      unsigned int width = std::max(1, static_cast<int>((2.0 * point) / res));
+      unsigned int height = std::max(1, static_cast<int>((2.0 * point) / res));
 
       double cx = group.getPositionX();
       double cy = group.getPositionY();
 
-      double ox, oy;
-      if (sin(angle) > 0)
-        oy = cy - base;
-      else
-        oy = cy + (point - base) * sin(angle) - base;
-
-      if (cos(angle) >= 0)
-        ox = cx - base;
-      else
-        ox = cx + (point - base) * cos(angle) - base;
-
+      // TODO: ox and oy can be optimized, but with attention to the covered area when asymmetry is significant
+      double oy = cy - point;
+      double ox = cx - point;
 
       int dx, dy;
       costmap->worldToMapNoBounds(ox, oy, dx, dy);
