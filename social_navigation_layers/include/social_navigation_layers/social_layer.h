@@ -27,6 +27,11 @@ public:
    */
   virtual void onInitialize();
 
+  /**
+   * Virtual method called before @ref updateBoundsFromPeople in @ref updateBounds
+   */
+  virtual void preprocessForBounds();
+
   virtual void updateBounds(double origin_x, double origin_y, double origin_yaw, double* min_x, double* min_y,
                             double* max_x, double* max_y);
 

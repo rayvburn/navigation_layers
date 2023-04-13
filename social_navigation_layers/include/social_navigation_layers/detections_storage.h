@@ -12,21 +12,27 @@ namespace social_navigation_layers
  * prevents leaving a high cost area.
  *
  * It is intended to keep input buffer for 1 iteration longer after the timeout on the buffer's validity expires
+ *
+ * @details This class does not handle multiple instances of @ref T as @ref bufferWillBeErased will return true only
+ * when there are no groups after a single one was tracked.
+ * It will likely also fail clearing the N-th group area once N+1-th was detected (buffer will be overwritten).
+ * This class needs to recognize and match instances of transformed_buffer that appear over time. Some identifier
+ * is required for that reason.
+ *
+ * An example approach to store timestamps along with buffer elements would look like:
+ * ```
+ *   class DataTimed: public T {
+ *   public:
+ *     DataTimed(const T& base, double timestamp): T(base), timestamp_(timestamp) {}
+ *   protected:
+ *     double timestamp_;
+ *   };
+ * ```
  */
 template <typename T>
 class DetectionsStorage
 {
 public:
-    /// Helper struct
-    struct AreaBounds {
-        AreaBounds(): min_x(0.0), min_y(0.0), max_x(0.0), max_y(0.0) {}
-
-        double min_x;
-        double min_y;
-        double max_x;
-        double max_y;
-    };
-
     DetectionsStorage():
         buffer_input_empty_(true),
         input_buffer_become_empty_(false),
@@ -41,14 +47,7 @@ public:
         duration_keep_ = time_sec;
     }
 
-    void update(
-        double timestamp,
-        const std::vector<T>& transformed_buffer,
-        double min_x,
-        double min_y,
-        double max_x,
-        double max_y
-    ) {
+    void update(double timestamp, const std::vector<T>& transformed_buffer) {
         bool new_buffer_empty = transformed_buffer.empty();
 
         // clear buffer when elapsed (pending @ref keep_time_elapsed_ flag from the previous @ref update)
@@ -86,15 +85,6 @@ public:
 
         // copy the buffer (either non-empty or empty)
         buffer_ = transformed_buffer;
-        // save valid area bounds related to the stored buffer
-        bounds_.min_x = min_x;
-        bounds_.min_y = min_y;
-        bounds_.max_x = max_x;
-        bounds_.max_y = max_y;
-    }
-
-    AreaBounds getArea() const {
-        return bounds_;
     }
 
     std::vector<T> getBuffer() const {
@@ -129,7 +119,6 @@ protected:
     bool input_buffer_become_empty_;
 
     std::vector<T> buffer_;
-    AreaBounds bounds_;
 
     /**
      * @defgroup timing Members used for counting time to keep the last buffer before erasing

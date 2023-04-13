@@ -21,10 +21,12 @@ public:
   {
   }
 
-  virtual void updateBounds(double origin_x, double origin_y, double origin_z, double* min_x, double* min_y,
-                            double* max_x, double* max_y)
-  {
-    boost::recursive_mutex::scoped_lock lock(lock_);
+  virtual void preprocessForBounds() override {
+    /*
+     * No need to process single humans @ref ProxemicLayer::preprocessForBounds
+     * as this layer fully relies on groups (and group class transforms members too)
+     */
+
     // prepare a set of groups to compute costs for; spatial attributes will be transformed to the costmap's frame
     std::vector<people_msgs_utils::Group> transformed_groups;
     // lookupTransform in each step is not time-optimal, but safe in terms of `people_frame_` being empty etc.
@@ -38,16 +40,6 @@ public:
         auto group_copy = group;
         group_copy.transform(transform);
         transformed_groups.push_back(group_copy);
-
-        double point = computeAdjustmentsRadius(
-          computeVarianceFromSpan(group_copy.getSpanX()),
-          computeVarianceFromSpan(group_copy.getSpanY())
-        ).second;
-
-        *min_x = std::min(*min_x, group_copy.getPositionX() - point);
-        *min_y = std::min(*min_y, group_copy.getPositionY() - point);
-        *max_x = std::max(*max_x, group_copy.getPositionX() + point);
-        *max_y = std::max(*max_y, group_copy.getPositionY() + point);
       }
       catch (tf2::LookupException& ex)
       {
@@ -66,13 +58,27 @@ public:
       }
     }
     // update the storage
-    detections_.update(ros::Time::now().toSec(), transformed_groups, *min_x, *min_y, *max_x, *max_y);
-    // update bounds, following sections will not execute as new data are not available
-    if (detections_.usingPersistingBuffer()) {
-      *min_x = detections_.getArea().min_x;
-      *min_y = detections_.getArea().min_y;
-      *max_x = detections_.getArea().max_x;
-      *max_y = detections_.getArea().max_y;
+    detections_.update(ros::Time::now().toSec(), transformed_groups);
+  }
+
+  virtual void updateBoundsFromPeople(double* min_x, double* min_y, double* max_x, double* max_y) override
+  {
+    // No need to process single humans @ref ProxemicLayer::updateBoundsFromPeople as this layer fully relies on groups
+
+    // this method finds which part of the costmap will be modified
+    for (const auto& group: detections_.getBuffer())
+    {
+      // distance from the mean of the `Gaussian` (group center) that has a `cutoff` cost assigned
+      double point = computeAdjustmentsRadius(
+        computeVarianceFromSpan(group.getSpanX()),
+        computeVarianceFromSpan(group.getSpanY())
+      ).second;
+
+      // find cost bounds, modelled by a circle
+      *min_x = std::min(*min_x, group.getPositionX() - point);
+      *min_y = std::min(*min_y, group.getPositionY() - point);
+      *max_x = std::max(*max_x, group.getPositionX() + point);
+      *max_y = std::max(*max_y, group.getPositionY() + point);
     }
   }
 

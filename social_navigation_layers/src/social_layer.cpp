@@ -32,12 +32,8 @@ void SocialLayer::peopleCallback(const people_msgs::People& people)
   std::tie(people_, std::ignore) = people_msgs_utils::createFromPeople(people.people);
 }
 
-
-void SocialLayer::updateBounds(double origin_x, double origin_y, double origin_z, double* min_x, double* min_y,
-                               double* max_x, double* max_y)
+void SocialLayer::preprocessForBounds()
 {
-  boost::recursive_mutex::scoped_lock lock(lock_);
-
   // prepare list of people to compute costs for
   transformed_people_.clear();
   // non time-optimal, but safe in terms of `people_frame_` being empty etc.
@@ -68,6 +64,14 @@ void SocialLayer::updateBounds(double origin_x, double origin_y, double origin_z
       continue;
     }
   }
+}
+
+void SocialLayer::updateBounds(double origin_x, double origin_y, double origin_z, double* min_x, double* min_y,
+                               double* max_x, double* max_y)
+{
+  boost::recursive_mutex::scoped_lock lock(lock_);
+
+  preprocessForBounds();
   updateBoundsFromPeople(min_x, min_y, max_x, max_y);
   if (first_time_)
   {
