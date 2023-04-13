@@ -22,6 +22,13 @@ void SocialLayer::onInitialize()
   current_ = true;
   first_time_ = true;
   people_sub_ = nh.subscribe("/people", 1, &SocialLayer::peopleCallback, this);
+
+  // load parameters
+  nh.param<bool>("enabled", enabled_, true);
+  // store param in temporary variable
+  double keep_time = 0.0;
+  nh.param<double>("keep_time", keep_time, 0.0);
+  people_keep_time_ = ros::Duration(keep_time);
 }
 
 void SocialLayer::peopleCallback(const people_msgs::People& people)

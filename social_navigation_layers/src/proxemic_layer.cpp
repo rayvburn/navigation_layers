@@ -38,6 +38,10 @@ void ProxemicLayer::onInitialize()
   server_ = new dynamic_reconfigure::Server<ProxemicLayerConfig>(nh);
   f_ = boost::bind(&ProxemicLayer::configure, this, _1, _2);
   server_->setCallback(f_);
+
+  // load parameters
+  nh.param<double>("cutoff", cutoff_, 10.0);
+  nh.param<double>("amplitude", amplitude_, 77.0);
 }
 
 void ProxemicLayer::updateBoundsFromPeople(double* min_x, double* min_y, double* max_x, double* max_y)
