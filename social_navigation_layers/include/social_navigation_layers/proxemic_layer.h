@@ -5,6 +5,7 @@
 #include <social_navigation_layers/social_layer.h>
 #include <dynamic_reconfigure/server.h>
 #include <social_navigation_layers/ProxemicLayerConfig.h>
+#include <social_navigation_layers/detections_storage.h>
 
 #include <utility>
 
@@ -29,6 +30,11 @@ public:
    * @url https://github.com/DLu/navigation_layers/compare/melodic...BadgerTechnologies:navigation_layers:develop
    */
   virtual void onInitialize();
+
+  /**
+   * Virtual method called before @ref updateBoundsFromPeople in @ref updateBounds
+   */
+  virtual void preprocessForBounds();
 
   /**
    * Calculates the min/max bounding box of costmap changes for all people
@@ -72,6 +78,8 @@ protected:
   double cutoff_, amplitude_;
   dynamic_reconfigure::Server<ProxemicLayerConfig>* server_;
   dynamic_reconfigure::Server<ProxemicLayerConfig>::CallbackType f_;
+
+  DetectionsStorage<people_msgs_utils::Person> detections_people_;
 };
 }  // namespace social_navigation_layers
 

@@ -42,12 +42,50 @@ void ProxemicLayer::onInitialize()
   // load parameters
   nh.param<double>("cutoff", cutoff_, 10.0);
   nh.param<double>("amplitude", amplitude_, 77.0);
+
+  detections_people_.setParameters(people_keep_time_.toSec());
+}
+
+void ProxemicLayer::preprocessForBounds()
+{
+    // prepare a set of people to compute costs for; spatial attributes will be transformed to the costmap's frame
+    std::vector<people_msgs_utils::Person> transformed_people;
+    // lookupTransform in each step is not time-optimal, but safe in terms of `people_frame_` being empty etc.
+    for (const auto& person: people_)
+    {
+      // transform poses to costmap frame
+      try
+      {
+        auto transform = tf_->lookupTransform(layered_costmap_->getGlobalFrameID(), people_frame_, ros::Time(0));
+        // copy for transform
+        auto person_copy = person;
+        person_copy.transform(transform);
+        transformed_people.push_back(person_copy);
+      }
+      catch (tf2::LookupException& ex)
+      {
+        ROS_ERROR("No Transform available Error: %s\n", ex.what());
+        continue;
+      }
+      catch (tf2::ConnectivityException& ex)
+      {
+        ROS_ERROR("Connectivity Error: %s\n", ex.what());
+        continue;
+      }
+      catch (tf2::ExtrapolationException& ex)
+      {
+        ROS_ERROR("Extrapolation Error: %s\n", ex.what());
+        continue;
+      }
+    }
+    // update the storage
+    detections_people_.update(ros::Time::now().toSec(), transformed_people);
 }
 
 void ProxemicLayer::updateBoundsFromPeople(double* min_x, double* min_y, double* max_x, double* max_y)
 {
   // this method finds which part of the costmap will be modified
-  for (const auto& person: transformed_people_)
+  for (const auto& person: detections_people_.getBuffer())
   {
     // velocity vector magnitude
     double mag = std::hypot(person.getVelocityX(), person.getVelocityY());
@@ -68,7 +106,7 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
   boost::recursive_mutex::scoped_lock lock(lock_);
   if (!enabled_) return;
 
-  if (people_.empty())
+  if (detections_people_.getBuffer().empty())
     return;
   if (cutoff_ >= amplitude_)
     return;
@@ -77,7 +115,7 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
   double res = costmap->getResolution();
 
   // iterate over all people data
-  for (const auto& person: transformed_people_)
+  for (const auto& person: detections_people_.getBuffer())
   {
     // yaw angle estimate of the person (will be quite `off` once person is standing)
     double angle = person.getOrientationYaw();
@@ -169,26 +207,39 @@ void ProxemicLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
         if (old_cost == costmap_2d::NO_INFORMATION)
           continue;
 
-        // map coordinates we're calculating for
-        double x = bx + i * res, y = by + j * res;
-        // direction of the vector pointing to the center of the person
-        double ma = std::atan2(y - cy, x - cx);
-        // difference between the `map angle` and the person's yaw
-        double diff = angles::shortest_angular_distance(angle, ma);
         // amplitude of the Gaussian function
-        double a;
-        // separate angle range that the Gaussian is calculated for as we're considering asymmetric Gaussian (prolonged
-        // in the person's heading direction); the other part is not affected by the orientation
-        if (fabs(diff) < M_PI / 2)
-          a = gaussian(x, y, cx, cy, amplitude_, var_heading, var_side, angle);
-        else
-          a = gaussian(x, y, cx, cy, amplitude_, var_rear, var_side, 0);
+        double a = 0.0;
+        // whether to clear old detections or to operate normally (i.e. updating with a new data)
+        if (!person.didStoredObjectGotOutdated())
+        {
+          // map coordinates we're calculating for
+          double x = bx + i * res, y = by + j * res;
+          // direction of the vector pointing to the center of the person
+          double ma = std::atan2(y - cy, x - cx);
+          // difference between the `map angle` and the person's yaw
+          double diff = angles::shortest_angular_distance(angle, ma);
 
-        // count in the tracking accuracy
-        a *= person.getReliability();
+          // separate angle range that the Gaussian is calculated for as we're considering asymmetric Gaussian (prolonged
+          // in the person's heading direction); the other part is not affected by the orientation
+          if (fabs(diff) < M_PI / 2)
+          {
+            a = gaussian(x, y, cx, cy, amplitude_, var_heading, var_side, angle);
+          }
+          else
+          {
+            a = gaussian(x, y, cx, cy, amplitude_, var_rear, var_side, 0);
+          }
 
-        if (a < cutoff_)
-          continue;
+          // count in the tracking accuracy
+          a *= person.getReliability();
+          // also, include the passage of time when the person is not observed anymore
+          a *= person.getStoredObjectAgeReliability();
+
+          if (a < cutoff_)
+          {
+            continue;
+          }
+        }
         unsigned char cvalue = (unsigned char) a;
         // NOTE how cell of the map is identified
         costmap->setCost(i + dx, j + dy, std::max(cvalue, old_cost));
@@ -233,6 +284,7 @@ void ProxemicLayer::configure(ProxemicLayerConfig &config, uint32_t level)
   cutoff_ = config.cutoff;
   amplitude_ = config.amplitude;
   people_keep_time_ = ros::Duration(config.keep_time);
+  detections_people_.setParameters(people_keep_time_.toSec());
   enabled_ = config.enabled;
 }
 };  // namespace social_navigation_layers
