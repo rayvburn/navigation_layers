@@ -166,6 +166,8 @@ public:
             a = gaussian(x, y, cx, cy, amplitude_, var_x, var_y, angle);
             // count in both the tracking accuracy and the relations strength
             a *= group.getReliability() * group.getSocialRelationsStrength();
+            // also, include the passage of time when the person is not observed anymore
+            a *= group.getStoredObjectAgeReliability();
 
             // if amplitude is too small, do not update costs
             if (a < cutoff_)
