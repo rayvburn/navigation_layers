@@ -160,7 +160,7 @@ public:
           double a = 0.0;
 
           // whether to clear old detections or to operate normally (i.e. updating with a new data)
-          if (!detections_.bufferWillBeErased())
+          if (!group.didStoredObjectGotOutdated())
           {
             a = gaussian(x, y, cx, cy, amplitude_, var_x, var_y, angle);
             // count in both the tracking accuracy and the relations strength
@@ -208,7 +208,7 @@ protected:
   virtual void configure(ProxemicLayerConfig& config, uint32_t level) override
   {
     ProxemicLayer::configure(config, level);
-    detections_.setKeepTime(people_keep_time_.toSec());
+    detections_.setParameters(people_keep_time_.toSec());
   }
 
   people_msgs_utils::Groups groups_;

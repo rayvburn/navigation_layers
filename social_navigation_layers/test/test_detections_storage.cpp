@@ -2,246 +2,90 @@
 
 #include <social_navigation_layers/detections_storage.h>
 
+// example class that matches the DetectionsStorage template impl
+#include <people_msgs_utils/person.h>
+
 using namespace social_navigation_layers;
 
-const auto BUF_EMPTY = std::vector<int>();
-const auto BUF_NON_EMPTY = std::vector<int>{1, 2, 3, 4, 5};
-const auto BUF_NON_EMPTY2 = std::vector<int>{5, 4, 3, 2, 1};
-const double MIN_X = 0.0;
-const double MIN_Y = 0.0;
-const double MAX_X = 100.0;
-const double MAX_Y = 100.0;
+people_msgs_utils::Person createEntity(const std::string& id) {
+  geometry_msgs::PoseWithCovariance pose;
+  geometry_msgs::PoseWithCovariance velocity;
+  double reliability = 1.0;
+  bool occluded = false;
+  bool matched = true;
+  unsigned int detection_id = rand();
+  unsigned long int track_age = rand();
+  std::string group_name = std::to_string(rand());
+
+  return people_msgs_utils::Person(
+    id,
+    pose,
+    velocity,
+    reliability,
+    occluded,
+    matched,
+    detection_id,
+    track_age,
+    group_name
+  );
+}
 
 // Test cases
-TEST(DetectionsStorageTest, init) {
-    DetectionsStorage<int> d;
+TEST(DetectionsStorageTest, lifecycle) {
+  auto john = createEntity("john");
+  auto josh = createEntity("josh");
+  auto frank = createEntity("frank");
+  auto lisa = createEntity("lisa");
+  auto linda = createEntity("linda");
+  auto steve = createEntity("steve");
 
-    ASSERT_EQ(d.getBuffer(), BUF_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
+  DetectionsStorage<people_msgs_utils::Person> ds;
+  ds.setParameters(5.0, 0.25);
 
-    // does not affect
-    d.setKeepTime(0.0);
-    ASSERT_EQ(d.getBuffer(), BUF_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
+  ds.update(0.5, {john, josh, frank});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(3));
+
+  ds.update(2.5, {john});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(3));
+
+  ds.update(4.5, {john});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(3));
+
+  // objects stored additionally until the next "update"
+  ds.update(6.5, {john});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(3));
+
+  ds.update(8.5, {john});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(1));
+
+  ds.update(10.5, {steve, lisa, linda, frank});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(5)); // plus john
+
+  ds.update(12.5, {lisa, linda, frank});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(5));
+
+  ds.update(14.5, {linda, frank});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(5));
+
+  ds.update(16.5, {frank});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(4)); // john outdated
+
+  ds.update(18.5, {});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(3)); // steve outdated
+
+  ds.update(20.5, {});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(2)); // lisa outdated
+
+  ds.update(22.5, {});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(1)); // linda outdated
+
+  ds.update(24.5, {});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(0)); // frank outdated
+
+  ds.update(26.5, {});
+  ASSERT_EQ(ds.getBuffer().size(), size_t(0));
 }
 
-TEST(DetectionsStorageTest, emptyData) {
-    DetectionsStorage<int> d;
-
-    d.update(1.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(2.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-}
-
-TEST(DetectionsStorageTest, keepTimeZero) {
-    DetectionsStorage<int> d;
-    d.setKeepTime(0.0);
-
-    d.update(0.50, BUF_NON_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(1.00, BUF_NON_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(1.50, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_TRUE(d.bufferHasBeenCleared());
-    ASSERT_TRUE(d.bufferKeepTimeElapsed());
-    ASSERT_TRUE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(2.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_TRUE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(2.50, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_TRUE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-}
-
-TEST(DetectionsStorageTest, keepTimeNonZero) {
-    DetectionsStorage<int> d;
-    d.setKeepTime(5.0);
-
-    d.update(0.10, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-
-    d.update(0.50, BUF_NON_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(1.00, BUF_NON_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    // first empty data set received
-    d.update(1.50, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_TRUE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(2.50, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(5.50, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(6.49, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(6.51, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_TRUE(d.bufferKeepTimeElapsed());
-    ASSERT_TRUE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    // immediately after first detection of elapsed time, the buffer becomes empty
-    d.update(6.52, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_TRUE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-}
-
-TEST(DetectionsStorageTest, renewedDataReception) {
-    DetectionsStorage<int> d;
-    d.setKeepTime(5.0);
-
-    d.update(6.00, BUF_NON_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(8.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_TRUE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(10.00, BUF_NON_EMPTY2, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY2);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(12.00, BUF_NON_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(14.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_TRUE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(16.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(20.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_TRUE(d.bufferKeepTimeElapsed());
-    ASSERT_TRUE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(22.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_TRUE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(24.00, BUF_NON_EMPTY2, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY2);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-
-    d.update(25.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY2);
-    ASSERT_TRUE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(31.00, BUF_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY2);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_TRUE(d.bufferKeepTimeElapsed());
-    ASSERT_TRUE(d.bufferWillBeErased());
-    ASSERT_TRUE(d.usingPersistingBuffer());
-
-    d.update(33.00, BUF_NON_EMPTY, MIN_X, MIN_Y, MAX_X, MAX_Y);
-    ASSERT_EQ(d.getBuffer(), BUF_NON_EMPTY);
-    ASSERT_FALSE(d.bufferHasBeenCleared());
-    ASSERT_FALSE(d.bufferKeepTimeElapsed());
-    ASSERT_FALSE(d.bufferWillBeErased());
-    ASSERT_FALSE(d.usingPersistingBuffer());
-}
 
 int main(int argc, char** argv) {
 	testing::InitGoogleTest(&argc, argv);
