@@ -27,7 +27,7 @@ public:
 
     double min_track_reliability = 0.75;
     nh.param<double>("min_track_reliability_to_keep", min_track_reliability, min_track_reliability);
-    detections_.setParameters(people_keep_time_.toSec(), min_track_reliability);
+    detections_groups_.setParameters(people_keep_time_.toSec(), min_track_reliability);
   }
 
   virtual void preprocessForBounds() override {
@@ -67,7 +67,7 @@ public:
       }
     }
     // update the storage
-    detections_.update(ros::Time::now().toSec(), transformed_groups);
+    detections_groups_.update(ros::Time::now().toSec(), transformed_groups);
   }
 
   virtual void updateBoundsFromPeople(double* min_x, double* min_y, double* max_x, double* max_y) override
@@ -75,7 +75,7 @@ public:
     // No need to process single humans @ref ProxemicLayer::updateBoundsFromPeople as this layer fully relies on groups
 
     // this method finds which part of the costmap will be modified
-    for (const auto& group: detections_.getBuffer())
+    for (const auto& group: detections_groups_.getBuffer())
     {
       // distance from the mean of the `Gaussian` (group center) that has a `cutoff` cost assigned
       double point = computeAdjustmentsRadius(
@@ -96,7 +96,7 @@ public:
     boost::recursive_mutex::scoped_lock lock(lock_);
     if (!enabled_) return;
 
-    if (detections_.getBuffer().empty())
+    if (detections_groups_.getBuffer().empty())
       return;
 
     if (cutoff_ >= amplitude_)
@@ -105,7 +105,7 @@ public:
     costmap_2d::Costmap2D* costmap = layered_costmap_->getCostmap();
     double res = costmap->getResolution();
 
-    for (const auto& group: detections_.getBuffer())
+    for (const auto& group: detections_groups_.getBuffer())
     {
       double angle = group.getOrientationYaw();
 
@@ -220,11 +220,11 @@ protected:
   virtual void configure(ProxemicLayerConfig& config, uint32_t level) override
   {
     ProxemicLayer::configure(config, level);
-    detections_.setParameters(people_keep_time_.toSec(), config.min_track_reliability_to_keep);
+    detections_groups_.setParameters(people_keep_time_.toSec(), config.min_track_reliability_to_keep);
   }
 
   people_msgs_utils::Groups groups_;
-  DetectionsStorage<people_msgs_utils::Group> detections_;
+  DetectionsStorage<people_msgs_utils::Group> detections_groups_;
 };
 }; // namespace social_navigation_layers
 
