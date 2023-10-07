@@ -43,7 +43,9 @@ void ProxemicLayer::onInitialize()
   nh.param<double>("cutoff", cutoff_, 10.0);
   nh.param<double>("amplitude", amplitude_, 77.0);
 
-  detections_people_.setParameters(people_keep_time_.toSec());
+  double min_track_reliability = 0.75;
+  nh.param<double>("min_track_reliability_to_keep", min_track_reliability, min_track_reliability);
+  detections_people_.setParameters(people_keep_time_.toSec(), min_track_reliability);
 }
 
 void ProxemicLayer::preprocessForBounds()
@@ -284,7 +286,7 @@ void ProxemicLayer::configure(ProxemicLayerConfig &config, uint32_t level)
   cutoff_ = config.cutoff;
   amplitude_ = config.amplitude;
   people_keep_time_ = ros::Duration(config.keep_time);
-  detections_people_.setParameters(people_keep_time_.toSec());
+  detections_people_.setParameters(people_keep_time_.toSec(), config.min_track_reliability_to_keep);
   enabled_ = config.enabled;
 }
 };  // namespace social_navigation_layers

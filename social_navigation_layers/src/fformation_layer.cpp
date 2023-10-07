@@ -21,6 +21,15 @@ public:
   {
   }
 
+  virtual void onInitialize() override {
+    ProxemicLayer::onInitialize();
+    ros::NodeHandle nh("~/" + name_);
+
+    double min_track_reliability = 0.75;
+    nh.param<double>("min_track_reliability_to_keep", min_track_reliability, min_track_reliability);
+    detections_.setParameters(people_keep_time_.toSec(), min_track_reliability);
+  }
+
   virtual void preprocessForBounds() override {
     /*
      * No need to process single humans @ref ProxemicLayer::preprocessForBounds
@@ -211,7 +220,7 @@ protected:
   virtual void configure(ProxemicLayerConfig& config, uint32_t level) override
   {
     ProxemicLayer::configure(config, level);
-    detections_.setParameters(people_keep_time_.toSec());
+    detections_.setParameters(people_keep_time_.toSec(), config.min_track_reliability_to_keep);
   }
 
   people_msgs_utils::Groups groups_;
