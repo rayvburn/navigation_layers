@@ -155,13 +155,14 @@ public:
           if (old_cost == costmap_2d::NO_INFORMATION)
             continue;
 
-          double x = bx + i * res, y = by + j * res;
           // stores cost 'amplitude'
           double a = 0.0;
 
           // whether to clear old detections or to operate normally (i.e. updating with a new data)
           if (!group.didStoredObjectGotOutdated())
           {
+            double x = bx + i * res, y = by + j * res;
+
             a = gaussian(x, y, cx, cy, amplitude_, var_x, var_y, angle);
             // count in both the tracking accuracy and the relations strength
             a *= group.getReliability() * group.getSocialRelationsStrength();
