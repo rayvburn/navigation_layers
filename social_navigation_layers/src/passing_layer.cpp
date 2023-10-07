@@ -21,43 +21,18 @@ public:
                             double* max_x, double* max_y)
   {
     boost::recursive_mutex::scoped_lock lock(lock_);
+    // using the base class' method
+    ProxemicLayer::preprocessForBounds();
 
-    // prepare list of people to compute costs for
-    transformed_people_.clear();
-    // non time-optimal, but safe in terms of `people_frame_` being empty etc.
-    for (const auto& person: people_)
+    // buffer stores observations spatially transformed to the costmap frame
+    for (const auto& person: detections_people_.getBuffer())
     {
-      // transform people poses and velocities to costmap frame
-      try
-      {
-        auto transform = tf_->lookupTransform(layered_costmap_->getGlobalFrameID(), people_frame_, ros::Time(0));
-        // copy for transform
-        auto person_copy = person;
-        person_copy.transform(transform);
-        transformed_people_.push_back(person_copy);
+      double point = computeAdjustmentsRadius().second;
 
-        double point = computeAdjustmentsRadius().second;
-
-        *min_x = std::min(*min_x, person_copy.getPositionX() - point);
-        *min_y = std::min(*min_y, person_copy.getPositionY() - point);
-        *max_x = std::max(*max_x, person_copy.getPositionX() + point);
-        *max_y = std::max(*max_y, person_copy.getPositionY() + point);
-      }
-      catch (tf2::LookupException& ex)
-      {
-        ROS_ERROR("No Transform available Error: %s\n", ex.what());
-        continue;
-      }
-      catch (tf2::ConnectivityException& ex)
-      {
-        ROS_ERROR("Connectivity Error: %s\n", ex.what());
-        continue;
-      }
-      catch (tf2::ExtrapolationException& ex)
-      {
-        ROS_ERROR("Extrapolation Error: %s\n", ex.what());
-        continue;
-      }
+      *min_x = std::min(*min_x, person.getPositionX() - point);
+      *min_y = std::min(*min_y, person.getPositionY() - point);
+      *max_x = std::max(*max_x, person.getPositionX() + point);
+      *max_y = std::max(*max_y, person.getPositionY() + point);
     }
   }
 
@@ -66,7 +41,7 @@ public:
     boost::recursive_mutex::scoped_lock lock(lock_);
     if (!enabled_) return;
 
-    if (people_.empty())
+    if (detections_people_.getBuffer().empty())
       return;
     if (cutoff_ >= amplitude_)
       return;
@@ -75,7 +50,7 @@ public:
     costmap_2d::Costmap2D* costmap = layered_costmap_->getCostmap();
     double res = costmap->getResolution();
 
-    for (const auto& person: transformed_people_)
+    for (const auto& person: detections_people_.getBuffer())
     {
       double angle = person.getOrientationYaw() + 1.51;
 
@@ -138,20 +113,26 @@ public:
           if (old_cost == costmap_2d::NO_INFORMATION)
             continue;
 
-          double x = bx + i * res, y = by + j * res;
-          double ma = atan2(y - cy, x - cx);
-          double diff = angles::shortest_angular_distance(angle, ma);
-          double a;
-          if (fabs(diff) < M_PI / 2)
-            a = gaussian(x, y, cx, cy, amplitude_, computeVarianceHeading(), computeVarianceSide(), angle);
-          else
-            continue;
+          double a = 0.0;
+          if (!person.didStoredObjectGotOutdated())
+          {
+            double x = bx + i * res, y = by + j * res;
+            double ma = atan2(y - cy, x - cx);
+            double diff = angles::shortest_angular_distance(angle, ma);
 
-          // count in the tracking accuracy
-          a *= person.getReliability();
+            if (fabs(diff) < M_PI / 2)
+              a = gaussian(x, y, cx, cy, amplitude_, computeVarianceHeading(), computeVarianceSide(), angle);
+            else
+              continue;
 
-          if (a < cutoff_)
-            continue;
+            // count in the tracking accuracy
+            a *= person.getReliability();
+            // also, include the passage of time when the person is not observed anymore
+            a *= person.getStoredObjectAgeReliability();
+
+            if (a < cutoff_)
+              continue;
+          }
           unsigned char cvalue = (unsigned char) a;
           costmap->setCost(i + dx, j + dy, std::max(cvalue, old_cost));
         }
