@@ -28,6 +28,8 @@ public:
     double min_track_reliability = 0.75;
     nh.param<double>("min_track_reliability_to_keep", min_track_reliability, min_track_reliability);
     detections_groups_.setParameters(people_keep_time_.toSec(), min_track_reliability);
+
+    nh.param<bool>("include_social_relations_strength", include_social_relations_strength_, true);
   }
 
   virtual void preprocessForBounds() override {
@@ -173,8 +175,11 @@ public:
             double x = bx + i * res, y = by + j * res;
 
             a = gaussian(x, y, cx, cy, amplitude_, var_x, var_y, angle);
-            // count in both the tracking accuracy and the relations strength
-            a *= group.getReliability() * group.getSocialRelationsStrength();
+            // count in both the tracking accuracy and (possibly) the relations strength
+            a *= group.getReliability();
+            if (include_social_relations_strength_) {
+              a *= group.getSocialRelationsStrength();
+            }
             // also, include the passage of time when the person is not observed anymore
             a *= group.getStoredObjectAgeReliability();
 
@@ -222,6 +227,9 @@ protected:
     ProxemicLayer::configure(config, level);
     detections_groups_.setParameters(people_keep_time_.toSec(), config.min_track_reliability_to_keep);
   }
+
+  /// Whether to multiply the amplitude of a layer's cell by the computed strength of social relations
+  bool include_social_relations_strength_;
 
   people_msgs_utils::Groups groups_;
   DetectionsStorage<people_msgs_utils::Group> detections_groups_;
